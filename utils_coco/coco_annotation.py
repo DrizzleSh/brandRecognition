@@ -8,8 +8,8 @@ from collections import defaultdict
 #-------------------------------------------------------#
 #   指向了COCO训练集与验证集图片的路径
 #-------------------------------------------------------#
-train_datasets_path     = "coco_dataset/train2017"
-val_datasets_path       = "coco_dataset/val2017"
+train_datasets_path     = "F:/dataSets/brand_train/train/images"
+val_datasets_path       = "F:/dataSets/brand_train/train/images"
 
 #-------------------------------------------------------#
 #   指向了COCO训练集与验证集标签的路径
@@ -27,12 +27,16 @@ if __name__ == "__main__":
     name_box_id = defaultdict(list)
     id_name     = dict()
     f           = open(train_annotation_path, encoding='utf-8')
-    data        = json.load(f)
+    data        = json.load(f)      # 输出Jason文件中的字典
 
     annotations = data['annotations']
+    images = data['images']
     for ant in annotations:
         id = ant['image_id']
-        name = os.path.join(train_datasets_path, '%012d.jpg' % id)
+        for image in images:
+            if(id == image['id']):
+                filename = image['file_name']
+        name = os.path.join(train_datasets_path, filename)
         cat = ant['category_id']
         cat = cat + 1
         # if cat >= 1 and cat <= 11:
