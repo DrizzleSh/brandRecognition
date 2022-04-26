@@ -26,17 +26,17 @@ class YOLO(object):
         #   如果出现shape不匹配，同时要注意训练时的model_path和classes_path参数的修改
         #--------------------------------------------------------------------------#
         "model_path"        : 'model_data/yolo4_weights.pth',
-        "classes_path"      : 'model_data/coco_classes.txt',
+        "classes_path"      : 'model_data/brands_classes',
         #---------------------------------------------------------------------#
         #   anchors_path代表先验框对应的txt文件，一般不修改。
         #   anchors_mask用于帮助代码找到对应的先验框，一般不修改。
         #---------------------------------------------------------------------#
-        "anchors_path"      : 'model_data/yolo_anchors.txt',
+        "anchors_path"      : 'model_data/coco_anchors.txt',
         "anchors_mask"      : [[6, 7, 8], [3, 4, 5], [0, 1, 2]],
         #---------------------------------------------------------------------#
         #   输入图片的大小，必须为32的倍数。
         #---------------------------------------------------------------------#
-        "input_shape"       : [416, 416],
+        "input_shape"       : [1280, 1280],
         #---------------------------------------------------------------------#
         #   只有得分大于置信度的预测框会被保留下来
         #---------------------------------------------------------------------#
@@ -407,4 +407,79 @@ class YOLO(object):
             f.write("%s %s %s %s %s %s\n" % (predicted_class, score[:6], str(int(left)), str(int(top)), str(int(right)),str(int(bottom))))
 
         f.close()
-        return 
+        return
+
+
+    def save_json(self, image, file_name, image_id, categories):
+        # ---------------------------------------------------#
+        #   计算输入图片的高和宽
+        # ---------------------------------------------------#
+        image_shape = np.array(np.shape(image)[0:2])
+        # ---------------------------------------------------------#
+        #   在这里将图像转换成RGB图像，防止灰度图在预测时报错。
+        #   代码仅仅支持RGB图像的预测，所有其它类型的图像都会转化成RGB
+        # ---------------------------------------------------------#
+        image = cvtColor(image)
+        # ---------------------------------------------------------#
+        #   给图像增加灰条，实现不失真的resize
+        #   也可以直接resize进行识别
+        # ---------------------------------------------------------#
+        image_data = resize_image(image, (self.input_shape[1], self.input_shape[0]), self.letterbox_image)
+        # ---------------------------------------------------------#
+        #   添加上batch_size维度
+        # ---------------------------------------------------------#
+        image_data = np.expand_dims(np.transpose(preprocess_input(np.array(image_data, dtype='float32')), (2, 0, 1)), 0)
+
+        with torch.no_grad():
+            images = torch.from_numpy(image_data)
+            if self.cuda:
+                images = images.cuda()
+            # ---------------------------------------------------------#
+            #   将图像输入网络当中进行预测！
+            # ---------------------------------------------------------#
+            outputs = self.net(images)
+            outputs = self.bbox_util.decode_box(outputs)
+            # ---------------------------------------------------------#
+            #   将预测框进行堆叠，然后进行非极大抑制
+            # ---------------------------------------------------------#
+            results = self.bbox_util.non_max_suppression(torch.cat(outputs, 1), self.num_classes, self.input_shape,
+                                                         image_shape, self.letterbox_image, conf_thres=self.confidence,
+                                                         nms_thres=self.nms_iou)
+            top_label=[]
+            top_conf=[]
+            top_boxes=[]
+            if results[0] is not None:
+            #     return image
+                  top_label = np.array(results[0][:, 6], dtype='int32')
+                  top_conf = results[0][:, 4] * results[0][:, 5]
+                  top_boxes = results[0][:, :4]
+
+        content_json = []
+        for i, c in list(enumerate(top_label)):
+            score = top_conf[i]
+            predicted_class = self.class_names[int(c)]
+            box = top_boxes[i]
+            score = top_conf[i]
+            top, left, bottom, right = box
+            w = right - left
+            h = bottom - top
+
+            y = float(max(0, top))
+            x = float(max(0, left))
+            w = float(max(0, w))
+            h = float(max(0, h))
+            score = float(score)
+            bbox = [x, y, w, h]
+
+            # print(label, top, left, bottom, right)
+            cat_id = categories[c]['id']
+            content_dic = {
+                "image_id": image_id,
+                "category_id": cat_id,
+                "bbox": bbox,
+                "score": score
+            }
+
+            #content_json.append(content_dic)
+            #return content_json
+            return content_dic
